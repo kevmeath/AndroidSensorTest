@@ -26,8 +26,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private SensorManager sensorManager;
     private Sensor accelerometer;
+    private Sensor rotation;
+
+    private static final int SENSOR_DELAY = SensorManager.SENSOR_DELAY_UI;
 
     private LineChart chart;
+
+    private float[] accelerometerData;
+    private float[] rotationVector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,9 +44,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        rotation = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
 
         if (accelerometer != null) {
-            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+            sensorManager.registerListener(this, accelerometer, SENSOR_DELAY);
+        }
+        if (rotation != null) {
+            sensorManager.registerListener(this, rotation, SENSOR_DELAY);
         }
 
         chart = findViewById(R.id.chart);
@@ -110,12 +120,45 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        addEntry(event.values[2]);
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            accelerometerData = event.values;
+        }
+        else if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+            rotationVector = event.values;
+        }
+
+        if (accelerometerData != null && rotationVector != null) {
+            float[] rotationMatrix = new float[9];
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, rotationVector);
+            float verticalMotion = getVerticalAcceleration(accelerometerData, rotationMatrix);
+            addEntry(verticalMotion);
+        }
+    }
+
+    private float getVerticalAcceleration(float[] accelerometerData, float[] rotMatrix) {
+        float[] worldMotion = new float[3];
+
+        // Multiply accelerometer matrix by transposed rotation matrix (indexed in transposed order)
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                worldMotion[i] += accelerometerData[j] * rotMatrix[(i+j)+2*i];
+            }
+        }
+
+        // Get vertical motion from matrix and subtract acceleration due to gravity
+        float verticalMotion = worldMotion[2] - 9.81f;
+
+        return verticalMotion;
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
 
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 
     @Override
